@@ -1,6 +1,6 @@
 <?php
 
-require_once 'vendor/autoload.php';
+require_once "vendor/autoload.php";
 
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -16,9 +16,9 @@ if (empty($targetQueue)) {
     exit;
 }
 
-$connection = new AMQPStreamConnection('localhost', 5672, 'guest', 'guest');
+$connection = new AMQPStreamConnection('127.0.0.1', 5672, 'guest', 'guest');
 $channel = $connection->channel();
-$channel->queue_declare($targetQueue, false, false, false, false);
+$channel->queue_declare($targetQueue, false, true, false, false);
 
 switch ($type) {
 
@@ -37,8 +37,15 @@ switch ($type) {
         break;
 
     case "consumer":
-        // echo " [v] MESSAGE: \n";
-        // $channel->basic_consume($targetQueue);
+        $callback = function ($msg) {
+            echo ' --- MSG: ', $msg->body, "\n";
+        };
+
+        $channel->basic_consume($targetQueue, '', false, true, false, false, $callback);
+
+        while ($channel->is_open()) {
+            $channel->wait();
+        }
         break;
 }
 $channel->close();

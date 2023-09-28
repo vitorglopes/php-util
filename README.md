@@ -1,1 +1,1 @@
-# php-amqp-queues
+## PHP RabbitMQ with amqplib
