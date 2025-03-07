@@ -69,6 +69,25 @@ class OracleDB
         }
     }
 
+    public function paginate($sql, $params = [], $page = 1, $perPage = 10)
+    {
+        $offset = ($page - 1) * $perPage;
+        $paginatedSql = "SELECT * FROM ( SELECT a.*, ROWNUM rnum FROM ( $sql ) a WHERE ROWNUM <= :limit ) WHERE rnum > :offset";
+        
+        try {
+            $stmt = $this->pdo->prepare($paginatedSql);
+            $stmt->bindValue(':limit', $offset + $perPage, PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+            return $stmt->fetchAll();
+        } catch (PDOException $e) {
+            throw new Exception("Erro na paginação: " . $e->getMessage());
+        }
+    }
+
     public function close()
     {
         $this->pdo = null;
