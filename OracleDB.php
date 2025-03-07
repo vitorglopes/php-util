@@ -1,95 +1,139 @@
 <?php
 
+use PDO;
+use PDOException;
+use Exception;
+
+/**
+ * Class for connecting to the Oracle database
+ * 
+ */
 class OracleDB
 {
-    private $pdo;
     private $host;
     private $port;
-    private $serviceName;
     private $username;
-    private $password;
+    private $psswrd;
+    private $serviceName;
+    private $pdo;
+    private $options;
     private $timeout;
+    private static $timeoutDefault = 15;
 
-    public function __construct($host, $port, $serviceName, $username, $password, $timeout = 10)
+    /**
+     * @param string $host
+     * @param string $port
+     * @param string $username
+     * @param string $psswrd
+     * @param string $serviceName Service name or Database name
+     * @param integer $timeout Timeout em segundos
+     */
+    public function __construct(?string $host, ?string $port, ?string $username, ?string $psswrd, ?string $serviceName, ?int $timeout = 0)
     {
-        $this->host = $host;
-        $this->port = $port;
-        $this->serviceName = $serviceName;
-        $this->username = $username;
-        $this->password = $password;
-        $this->timeout = $timeout;
-        $this->connect();
+        $this->setTimeout($timeout);
+        $this->setOptions();
+
+        if (isset($host) && !empty($host)) {
+            $this->setNewConnection($host, $port, $username, $psswrd, $serviceName, $timeout);
+        }
     }
 
-    private function connect()
+    private function setTimeout(int $timeout = 0): void
     {
-        $dsn = "oci:dbname=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={$this->host})(PORT={$this->port}))(CONNECT_DATA=(SERVICE_NAME={$this->serviceName})))";
+        if ($timeout > 0) {
+            $this->timeout = $timeout;
+            return;
+        }
+        $this->timeout = self::$timeoutDefault;
+    }
 
-        $options = [
+    private function setOptions(): void
+    {
+        $this->options = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_TIMEOUT => $this->timeout,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ];
+    }
+
+    public function setNewConnection(string $host, string $port, string $username, string $psswrd, string $serviceName, int $timeout = 0)
+    {
+        $this->host = $host;
+        $this->port = $port;
+        $this->username = $username;
+        $this->psswrd = $psswrd;
+        $this->serviceName = $serviceName;
+        $this->setTimeout($timeout);
+        $this->setOptions();
+    }
+
+    private function connect(): void
+    {
+        $dsn = "oci:dbname=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={$this->host})(PORT={$this->port}))(CONNECT_DATA=(SERVICE_NAME={$this->serviceName})))";
 
         try {
-            $this->pdo = new PDO($dsn, $this->username, $this->password, $options);
-            $this->setSessionTimeout();
+            $this->pdo = new PDO($dsn, $this->username, $this->psswrd, $this->options);
         } catch (PDOException $e) {
-            throw new Exception("Erro ao conectar ao Oracle: " . $e->getMessage());
+            throw new Exception("Connection error: " . $e->getMessage());
         }
     }
 
-    private function setSessionTimeout()
+    private function close(): void
     {
-        $query = "ALTER SESSION SET RESOURCE_LIMIT = TRUE";
-        $this->pdo->exec($query);
-        
-        $query = "ALTER SESSION SET IDLE_TIME = " . $this->timeout;
-        $this->pdo->exec($query);
+        $this->pdo = null;
     }
 
-    public function query($sql, $params = [])
+    /**
+     * Execute a query on the database
+     *
+     * @param string $sql
+     * @param array $params
+     * @return void
+     */
+    public function query(string $sql, array $params = [])
     {
         try {
+            $this->connect();
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
+            $this->close();
             return $stmt->fetchAll();
         } catch (PDOException $e) {
-            throw new Exception("Erro na consulta: " . $e->getMessage());
+            $this->close();
+            throw new Exception("Query error: " . $e->getMessage());
         }
     }
 
-    public function execute($sql, $params = [])
-    {
-        try {
-            $stmt = $this->pdo->prepare($sql);
-            return $stmt->execute($params);
-        } catch (PDOException $e) {
-            throw new Exception("Erro na execução: " . $e->getMessage());
-        }
-    }
-
-    public function paginate($sql, $params = [], $page = 1, $perPage = 10)
+    /**
+     * Paginate the results of a query
+     *
+     * @param string $sql
+     * @param array $params
+     * @param integer $page
+     * @param integer $perPage
+     * @return void
+     */
+    public function paginate(string $sql, $params = [], $page = 1, $perPage = 10)
     {
         $offset = ($page - 1) * $perPage;
-        $paginatedSql = "SELECT * FROM ( SELECT a.*, ROWNUM rnum FROM ( $sql ) a WHERE ROWNUM <= :limit ) WHERE rnum > :offset";
-        
+        $paginatedSql = "SELECT * FROM ( SELECT a.*, ROWNUM rnum FROM ( $sql ) a WHERE ROWNUM <= :limit ) WHERE rnum > :offset ";
+
         try {
+            $this->connect();
             $stmt = $this->pdo->prepare($paginatedSql);
             $stmt->bindValue(':limit', $offset + $perPage, PDO::PARAM_INT);
             $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
+
             $stmt->execute();
+            $this->close();
             return $stmt->fetchAll();
         } catch (PDOException $e) {
-            throw new Exception("Erro na paginação: " . $e->getMessage());
+            $this->close();
+            throw new Exception("Paginate error: " . $e->getMessage());
         }
-    }
-
-    public function close()
-    {
-        $this->pdo = null;
     }
 }
