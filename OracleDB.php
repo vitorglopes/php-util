@@ -86,9 +86,6 @@ class OracleDB
     /**
      * Execute a query on the database
      *
-     * @param string $sql
-     * @param array $params
-     * @return void
      */
     public function query(string $sql, array $params = [])
     {
@@ -107,11 +104,6 @@ class OracleDB
     /**
      * Paginate the results of a query
      *
-     * @param string $sql
-     * @param array $params
-     * @param integer $page
-     * @param integer $perPage
-     * @return void
      */
     public function paginate(string $sql, $params = [], $page = 1, $perPage = 10)
     {
